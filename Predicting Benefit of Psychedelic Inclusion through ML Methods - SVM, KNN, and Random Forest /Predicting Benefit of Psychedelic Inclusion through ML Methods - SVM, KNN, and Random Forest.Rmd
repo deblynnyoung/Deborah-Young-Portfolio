@@ -1,0 +1,816 @@
+---
+title: "Psychedelic Inclusion for Improved Health"
+author: "Deborah Young"
+date: "2023-08-08"
+output: pdf_document
+---
+
+```{r, include=FALSE}
+library(readxl)
+library(tidyverse)
+library(randomForest)
+library(caret)
+library(e1071)
+library(dplyr)
+library(class)
+library(pROC)
+library(gbm)
+
+# Load the knitr package
+library(knitr)
+
+# Set global options to suppress warnings
+knitr::opts_chunk$set(warning = FALSE)
+
+```
+
+```{r, include=FALSE}
+
+data <- read_excel("/Users/debane/Documents/MS Data Science/630 Predictive Analytics/Term Project/An Exploration of Naturalistic Psychedelic use.xlsx", sheet = 2)
+
+head(data)
+
+```
+
+## Data Exploration and Cleaning:
+
+```{r}
+
+nrow(data)
+ncol(data)
+
+```
+
+```{r, include=TRUE}
+
+duplicated_rows <- duplicated(data)
+unique_data <- data[!duplicated_rows, ]
+nrow(unique_data)
+
+# Calculate the sum of NA values per column
+na_sum_per_column <- colSums(is.na(data))
+#print(na_sum_per_column)
+
+na_sum <- sum(is.na(data))
+#print(na_sum)
+
+missing_percentage <- colMeans(is.na(data)) * 100
+#print(missing_percentage)
+
+```
+
+```{r}
+
+# Calculate the percentage of missing data for each column
+missing_percentage <- colMeans(is.na(data)) * 100
+
+# Identify columns with missing data greater than 50%
+columns_to_keep <- missing_percentage <= 5
+
+# Subset the data frame to keep only the columns with missing data less than or equal to 5%
+data_filtered <- data[, columns_to_keep]
+nrow(data_filtered)
+ncol(data_filtered)
+
+# Print the filtered data frame
+#head(data_filtered)
+
+```
+
+```{r, include=FALSE}
+
+column_types <- sapply(data_filtered, class)
+print(column_types)
+
+```
+
+------------------------------------------------------------------------
+
+CREATE DATAFRAME FOR ONLY CATEGORICAL DATA
+
+```{r}
+
+# Use apply() to check for repeating values in each column
+columns_with_duplicates <- apply(data_filtered, 2, function(x) any(duplicated(x)))
+
+# Alternatively, you can use sapply() for a simplified output
+columns_with_duplicates <- sapply(data_filtered, function(x) any(duplicated(x)))
+
+# Get the names of columns with repeating values
+columns_with_repeats <- names(data_filtered)[columns_with_duplicates]
+
+# Print the columns with repeating values
+#print(columns_with_repeats)
+  
+data2 <- data_filtered %>%
+  dplyr::select(dplyr::all_of(columns_with_repeats))
+
+```
+
+```{r, include=FALSE}
+head(data2)
+```
+
+```{r}
+
+categorical_data <- data2 %>%
+  dplyr::select(-StartDate, -EndDate, -`Duration (in seconds)`, -Q7)
+
+#head(categorical_data)
+
+```
+
+------------------------------------------------------------------------
+
+VIEW CATEGORICAL VARIABLES
+
+```{r, include=FALSE}
+
+#get names of categorical columns
+cat_variables <- paste0(sprintf('"%s"', colnames(categorical_data)), collapse = ", ")
+
+cat(cat_variables)
+
+```
+
+```{r, include=FALSE}
+#categorical_variables to be converted to ordinal
+categorical_variables <- c("Q4", "Q6", "Q8", "Q9", "Q11", "Q12", "Q13", "Q14", "Q16", "Q20", "Shroom_1Year", "LSD_1Year", "DMT_1Year", "5-MeO_1Year", "Aya_1Year", "Mescal_1Year", "Iboga_1Year", "RC_1Year", "Salvia_1Year", "MDMA_1Year", "Ket_1Year", "Opiate_1Year", "Stim_1Year", "Shroom_Life", "LSD_Life", "DMT_Life", "5-MeO_Life", "Aya_Life", "Mescal_Life", "Iboga_Life", "RC_Life", "Salvia_Life", "MDMA_Life", "Ket_Life", "Opiate_Life", "Stim_Life", "Cig_1Year", "Weed_1Year", "Alcohol_1Year", "Cigs_Life", "Weed_Life", "Alcohol_Life", "Q26", "Q28", "Q29", "Spiritual", "Fun", "Inspiration", "Exploration", "Meaning", "Self-Develop", "Healing", "Addiction", "Wellbeing", "Social", "Fucked-up", "Escape", "Boredom", "Curiosity", "Mystical", "Understand Reality", "Ego-death", "Enhance", "Type of Use", "Use_location_1", "Planning in advance", "Q45", "Q46", "Q47", "Q48", "Q49", "Q50", "Q54", "Q55", "Q57_1", "Q57_2", "Q57_3", "Q57_4", "Q57_5", "Q57_6", "Q57_7", "Q57_8", "Q57_9", "Q57_10", "Q57_11", "Q57_12", "Q57_13", "Q57_14", "Q57_15", "Q57_16", "Q57_17", "Q57_18", "Q57_19", "Q57_20", "Q57_21", "Q57_22", "Q57_23", "Q57_24", "Q57_25", "Q57_26", "Q57_27", "Q57_28", "Q57_29", "Q57_30", "Q57_31", "Q57_32", "Q57_33", "Q57_34", "Q57_35", "Q57_36", "Q57_37", "Q57_38", "Q57_39", "Q57_40", "Q57_41", "Q57_42", "Q57_43", "Q57_44", "Q57_45", "Q57_46", "Q57_47", "Q57_48", "Q57_49", "Q57_50", "Q57_51", "Q57_52", "Q57_53", "Q57_54", "Q57_55", "Q57_56", "Q58_1", "Q58_2", "Q58_3", "Q58_4", "Q58_5", "Q58_6", "Q58_7", "Q59_1", "Q59_2", "Q59_3", "Q59_4", "Q59_5", "Q59_6", "Q59_7", "Fear_Typical", "Paranoia_Typical", "Pain_Typical", "Sadness_Typical", "Despair_Typical", "Shame_Typical", "Loneliness_Typical", "Insanity_Typical", "Overwhelm_Typical", "Fear_High", "Paranoia_High", "Pain_High", "Sadness_High", "Despair_High", "Shame_High", "Loneliness_High", "Insanity_High", "Overwhelm_High", "Q64", "Q67", "Q70", "Peace_Typical", "Love_Typical", "Joy_Typical", "Hope_Typical", "Self-Accept_Typical", "Unity_Typical", "Belonging_Typical", "Sacredness_Typical", "Awe_Typical", "Creative_Typical", "Beauty_Typical", "Gratitude_Typical", "Openness_Typical", "Peace_High", "Love_High", "Joy_High", "Hope_High", "Self-Accept_High", "Unity_High", "Belonging_High", "Sacredness_High", "Awe_High", "Creative_High", "Beauty_High", "Gratitude_High", "Openness_High", "Q88", "Q89", "Q90", "Q92")
+
+```
+
+------------------------------------------------------------------------
+
+CREATE NEW VARIABLE FOR CLEANED DATA
+
+------------------------------------------------------------------------
+
+```{r}
+#drop columns without ordinal data
+data <- categorical_data %>% dplyr::select(-c("Q4", "Q6", "Q8", "Q9", "Q11", "Q12", "Q13", "Use_location_1", "Q70"))
+  
+```
+
+HOLDING DATA HERE:
+
+```{r}
+
+preserved_data <- data
+
+```
+
+------------------------------------------------------------------------
+
+## Modeling:
+
+***MODELING FOR ALL CLASSES OF TARGET VARIABLE***
+
+```{r}
+table(data$Q88)
+```
+
+Going to change "None (0%)" to "Less than 1%" so that I don't have any classes with only one value for splitting later on.
+
+```{r}
+
+# Replacing "None (0%)" with "Less than 1%" in the target column "Q88"
+data$Q88[data$Q88 == "None (0%)"] <- "Less than 1%"
+
+
+```
+
+```{r}
+table(data$Q88)
+```
+
+Convert data to **factor** before one hot encoding:
+
+```{r, include=FALSE}
+
+#separate target variable and convert to factor
+target_variable <- as.factor(data$Q88) 
+
+#Remove the Target Variable from the Data 
+feature_data <- data[, -which(names(data) == "Q88")]
+
+```
+
+```{r}
+table(target_variable)
+```
+
+```{r}
+
+#convert columns to factors
+
+# Loop through the columns of the data
+for (col_name in names(feature_data)) {
+  # Extract the unique responses for the column
+  unique_res <- unique(feature_data[[col_name]])
+  
+  # If the number of unique responses is less than or equal to 10
+  if (length(unique_res) <= 10) {
+    # Convert the column to an ordered factor using the unique responses as levels
+    feature_data[[col_name]] <- factor(feature_data[[col_name]], levels = unique_res, ordered = TRUE)
+  }
+}
+
+# Now, 'feature_data' is updated so that the relevant columns are ordered factors
+
+
+```
+
+**FEATURE ENGINEERING: ONE-HOT ENCODING**
+
+```{r}
+
+data_onehot <- dummyVars("~ .", data = feature_data)
+data_encoded <- data.frame(predict(data_onehot, newdata = feature_data))
+
+```
+
+```{r}
+
+final_data <- data.frame(target = target_variable, data_encoded)
+
+```
+
+```{r, include=FALSE}
+head(final_data)
+```
+
+**FEATURE SELECTION**
+
+```{r}
+# Identify rows with any missing values
+rows_with_na <- rowSums(is.na(final_data)) > 0
+
+# Subset data to view only rows with missing values
+missing_data_rows <- final_data[rows_with_na,]
+
+# Print or view the rows with missing values
+#print(missing_data_rows)
+
+```
+
+```{r}
+#ommitting NAs because there are only 4 records with them and two of them appear to be NA all across.
+final_data <- na.omit(final_data)
+```
+
+Tried RFE but it was too computationally intensive.
+
+```{r}
+
+#library(caret)
+#control <- rfeControl(functions=rfFuncs, method="cv", number=10)
+#results <- rfe(final_data[, -which(names(final_data) == "target")], final_data$target, sizes=c(1:ncol(final_data)-1), rfeControl=control)
+#selected_features <- predictors(results)
+
+```
+
+Stepwise Regression Try #1 - Error in stepAIC(full_model, direction = "both") : AIC is -infinity for this model, so 'stepAIC' cannot proceed
+
+```{r}
+
+#full_model <- lm(target ~ ., data = final_data)
+
+#library(MASS)
+#stepwise_model <- stepAIC(full_model, direction="both") # full_model is the initial model with all features
+#selected_features <- names(coef(stepwise_model))
+#final_data <- final_data[, c("target", selected_features)]
+
+
+```
+
+Stepwise Regression Try #2 - Error in stepAIC(full_model, direction = "both") : AIC is -infinity for this model, so 'stepAIC' cannot proceed
+
+```{r}
+
+#library(MASS)
+
+# Fit the full model with all predictors
+#full_model <- lm(target ~ ., data = final_data)
+
+# Apply stepwise selection
+#stepwise_model <- stepAIC(full_model, direction = "both")
+
+# The final selected model
+#final_model <- lm(formula(stepwise_model), data = final_data)
+
+
+```
+
+**CORRELATION MATRIX FOR FEATURE SELECTION**
+
+```{r}
+correlation_matrix <- cor(final_data[, -which(names(final_data) == "target")])
+highly_correlated <- findCorrelation(correlation_matrix, cutoff = 0.75)
+final_data <- final_data[, -highly_correlated]
+
+```
+
+*BEGIN MODELING*
+
+Split Data
+
+```{r}
+
+set.seed(123)
+splitIndex <- createDataPartition(final_data$target, p = .8, list = FALSE)
+train_data <- final_data[splitIndex,]
+test_data <- final_data[-splitIndex,]
+
+
+```
+
+Tried **linear model** but I knew it wasn't right, I just wanted to see and this is the warning I received: "Warning: using type ="numeric" with a factor response will be ignoredWarning: '-' not meaningful for factors"
+
+```{r}
+
+#linear_model <- lm(target ~ ., data = train_data)
+
+
+```
+
+### **SVM MODEL**
+
+```{r}
+
+svm_model <- svm(target ~ ., data=train_data)
+summary(svm_model)
+
+```
+
+Evaluate SVM Model
+
+```{r}
+
+predictions <- predict(svm_model, newdata = test_data) 
+
+```
+
+```{r}
+
+conf_matrix <- confusionMatrix(predictions, test_data$target) 
+print(conf_matrix)
+
+
+```
+
+```{r}
+
+accuracy <- sum(diag(conf_matrix$table)) / sum(conf_matrix$table)
+print(paste("Accuracy:", round(accuracy, 3)))
+
+```
+
+### **RANDOM FOREST MODEL**
+
+```{r}
+
+set.seed(123)
+splitIndex <- createDataPartition(final_data$target, p = .8, list = FALSE)
+train_data <- final_data[splitIndex,]
+test_data <- final_data[-splitIndex,]
+
+
+```
+
+```{r}
+
+rf_model <- randomForest(target ~ ., data = train_data)
+
+```
+
+```{r}
+
+predictions <- predict(rf_model, test_data) 
+confusionMatrix(predictions, test_data$target) 
+
+
+```
+
+------------------------------------------------------------------------
+
+***MODELING FOR SPECIFIED BINARY TARGET VARIABLE***
+
+```{r}
+table(preserved_data$Q88)
+```
+
+TRYING BINARY
+
+```{r}
+# Creating a binary target variable for whether Q88 is in the 76-100% range
+preserved_data$target_variable <- ifelse(preserved_data$Q88 == "76-100%", 1, 0)
+
+# Checking the table for the new target variable
+table(preserved_data$target_variable)
+
+```
+
+```{r}
+
+#separate target variable and convert to factor
+target_variable <- as.factor(preserved_data$target_variable)
+
+#Remove the Target Variable from the Data
+feature_data <- preserved_data[, -which(names(preserved_data) == "target_variable")]
+
+
+```
+
+```{r}
+table(target_variable)
+```
+
+```{r}
+
+#convert columns to factors
+
+# Loop through the columns of the data
+for (col_name in names(feature_data)) {
+  # Extract the unique responses for the column, assuming they are in the desired order
+  unique_res <- unique(feature_data[[col_name]])
+  
+  # If the number of unique responses is less than or equal to 10
+  if (length(unique_res) <= 10) {
+    # Convert the column to an ordered factor using the unique responses as levels
+    feature_data[[col_name]] <- factor(feature_data[[col_name]], levels = unique_res, ordered = TRUE)
+  }
+}
+
+# Now, 'feature_data' is updated so that the relevant columns are ordered factors
+
+
+```
+
+**FEATURE ENGINEERING: ONE-HOT ENCODING**
+
+```{r}
+
+data_onehot <- dummyVars("~ .", data = feature_data)
+data_encoded <- data.frame(predict(data_onehot, newdata = feature_data))
+
+
+```
+
+```{r}
+
+final_data <- data.frame(target = target_variable, data_encoded)
+
+
+```
+
+```{r, include=FALSE}
+head(final_data)
+```
+
+**FEATURE SELECTION**
+
+```{r}
+# Identify rows with any missing values
+rows_with_na <- rowSums(is.na(final_data)) > 0
+
+# Subset data to view only rows with missing values
+missing_data_rows <- final_data[rows_with_na,]
+
+# Print or view the rows with missing values
+#print(missing_data_rows)
+
+
+```
+
+```{r}
+#ommitting NAs because they can't be present for most models and there are only 4 records with them and two of them appear to be NA all across.
+final_data <- na.omit(final_data)
+```
+
+STARTEDITING HERE
+
+Tried RFE but it was too computationally intensive.
+
+```{r}
+
+#library(caret)
+#control <- rfeControl(functions=rfFuncs, method="cv", number=10)
+#results <- rfe(final_data[, -which(names(final_data) == "target")], final_data$target, sizes=c(1:ncol(final_data)-1), rfeControl=control)
+#selected_features <- predictors(results)
+
+```
+
+Stepwise Regression Try #1 - Error in stepAIC(full_model, direction = "both") : AIC is -infinity for this model, so 'stepAIC' cannot proceed
+
+```{r}
+
+
+#error: Error in stepAIC(full_model, direction = "both") : AIC is -infinity for this model, so 'stepAIC' cannot proceed
+
+#full_model <- lm(target ~ ., data = final_data)
+
+#library(MASS)
+#stepwise_model <- stepAIC(full_model, direction="both") # full_model is the initial model with all features
+#selected_features <- names(coef(stepwise_model))
+#final_data <- final_data[, c("target", selected_features)]
+
+
+```
+
+Stepwise Regression Try #2 - Error in stepAIC(full_model, direction = "both") : AIC is -infinity for this model, so 'stepAIC' cannot proceed
+
+```{r}
+
+#error: Error in stepAIC(full_model, direction = "both") : AIC is -infinity for this model, so 'stepAIC' cannot proceed
+
+#library(MASS)
+
+# Fit the full model with all predictors
+#full_model <- lm(target ~ ., data = final_data)
+
+# Apply stepwise selection
+#stepwise_model <- stepAIC(full_model, direction = "both")
+
+# The final selected model
+#final_model <- lm(formula(stepwise_model), data = final_data)
+
+
+```
+
+CO**RRELATION MATRIX FOR FEATURE SELECTION**
+
+```{r}
+correlation_matrix <- cor(final_data[, -which(names(final_data) == "target")])
+highly_correlated <- findCorrelation(correlation_matrix, cutoff = 0.75)
+final_data <- final_data[, -highly_correlated]
+
+```
+
+Split data
+
+```{r}
+
+set.seed(123)
+splitIndex <- createDataPartition(final_data$target, p = .8, list = FALSE)
+train_data <- final_data[splitIndex,]
+test_data <- final_data[-splitIndex,]
+
+```
+
+Tried linear model but I knew it wasn't right, I just wanted to see and this is the warning I received: "Warning: using type ="numeric" with a factor response will be ignoredWarning: '-' not meaningful for factors"
+
+```{r}
+
+#linear_model <- lm(target ~ ., data = train_data)
+
+
+```
+
+### **SVM MODEL**
+
+```{r}
+
+svm_model <- svm(target ~ ., data=train_data)
+summary(svm_model)
+
+
+```
+
+Evaluate SVM Model
+
+```{r}
+
+predictions <- predict(svm_model, newdata = test_data) 
+
+```
+
+```{r}
+
+conf_matrix <- confusionMatrix(predictions, test_data$target) 
+print(conf_matrix)
+
+
+```
+
+```{r}
+
+accuracy <- sum(diag(conf_matrix$table)) / sum(conf_matrix$table)
+print(paste("Accuracy:", round(accuracy, 3)))
+
+```
+
+------------------------------------------------------------------------
+
+### **KNN MODEL**
+
+```{r}
+
+set.seed(123)
+splitIndex <- createDataPartition(final_data$target, p = .8, list = FALSE)
+train_data <- final_data[splitIndex,]
+test_data <- final_data[-splitIndex,]
+
+
+```
+
+```{r}
+
+knn_model <- knn(train_data[, -which(names(train_data) == "target")], test_data[, -which(names(test_data) == "target")], train_data$target, k=5)
+
+```
+
+```{r}
+
+confusion <- confusionMatrix(test_data$target, knn_model)
+print(confusion)
+
+```
+
+```{r}
+accuracy <- sum(test_data$target == knn_model) / length(test_data$target)
+print(paste("Accuracy:", round(accuracy * 100, 2), "%"))
+
+```
+
+```{r}
+print(confusion$byClass)
+
+```
+
+```{r}
+
+roc_obj <- roc(test_data$target, as.numeric(knn_model))
+auc(roc_obj)
+plot(roc_obj)
+
+```
+
+------------------------------------------------------------------------
+
+### **RANDOMFOREST MODEL**
+
+```{r}
+
+set.seed(123)
+splitIndex <- createDataPartition(final_data$target, p = .8, list = FALSE)
+train_data <- final_data[splitIndex,]
+test_data <- final_data[-splitIndex,]
+
+```
+
+```{r}
+
+rf_model <- randomForest(target ~ ., data = train_data)
+
+```
+
+```{r}
+
+predictions <- predict(rf_model, test_data) 
+confusionMatrix(predictions, test_data$target) 
+
+```
+
+```{r}
+
+roc_obj <- roc(test_data$target, as.numeric(predictions))
+auc(roc_obj)
+plot.roc(roc_obj)
+
+```
+
+*GBM Model did not function properly.*
+
+---------
+
+### WORD CLOUDS:
+
+```{r}
+
+library(wordcloud)
+library(tm)
+
+```
+
+Q91: "What do you believe are psychedelics most important contribution to society? (optional)" - Participants were then presented with a text box to answer
+
+```{r}
+
+df <- read_excel("/Users/debane/Documents/MS Data Science/630 Predictive Analytics/Term Project/An Exploration of Naturalistic Psychedelic use.xlsx", sheet = 2)
+
+head(df)
+
+text_data <- paste(df$Q91, collapse = " ")
+
+```
+
+```{r}
+library(tm)
+text_data <- tolower(text_data)
+text_data <- removePunctuation(text_data)
+text_data <- removeNumbers(text_data)
+text_data <- removeWords(text_data, stopwords("en"))
+
+```
+
+```{r}
+
+text_corpus <- Corpus(VectorSource(text_data))
+text_tdm <- TermDocumentMatrix(text_corpus)
+text_m <- as.matrix(text_tdm)
+word_freqs <- sort(rowSums(text_m), decreasing=TRUE)
+word_cloud_data <- data.frame(word=names(word_freqs), freq=word_freqs)
+
+```
+
+```{r, include=FALSE}
+
+wordcloud(words = word_cloud_data$word, freq = word_cloud_data$freq, min.freq = 1, max.words=200, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+
+```
+
+```{r}
+
+# Open a PNG graphics device
+png(filename="/Users/debane/Documents/MS Data Science/630 Predictive Analytics/Term Project/Q91wordcloud.png", width=800, height=400)
+
+# Your existing code to create the word cloud
+text_corpus <- Corpus(VectorSource(text_data))
+text_tdm <- TermDocumentMatrix(text_corpus)
+text_m <- as.matrix(text_tdm)
+word_freqs <- sort(rowSums(text_m), decreasing=TRUE)
+word_cloud_data <- data.frame(word=names(word_freqs), freq=word_freqs)
+
+wordcloud(words = word_cloud_data$word, freq = word_cloud_data$freq, min.freq = 1, max.words=200, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+
+# Close the PNG graphics device
+dev.off()
+
+
+```
+
+Q93: "Can you describe your most powerful positive psychedelic experience and any enduring changes you attribute to having that experience? (optional)" - Participants could then answer using a text box
+
+```{r}
+text_data <- paste(df$Q93, collapse = " ")
+
+```
+
+```{r}
+library(tm)
+text_data <- tolower(text_data)
+text_data <- removePunctuation(text_data)
+text_data <- removeNumbers(text_data)
+text_data <- removeWords(text_data, stopwords("en"))
+
+```
+
+```{r}
+
+text_corpus <- Corpus(VectorSource(text_data))
+text_tdm <- TermDocumentMatrix(text_corpus)
+text_m <- as.matrix(text_tdm)
+word_freqs <- sort(rowSums(text_m), decreasing=TRUE)
+word_cloud_data <- data.frame(word=names(word_freqs), freq=word_freqs)
+
+```
+
+```{r, include=FALSE}
+
+wordcloud(words = word_cloud_data$word, freq = word_cloud_data$freq, min.freq = 1, max.words=200, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+
+```
+
+```{r}
+
+# Open a PNG graphics device
+png(filename="/Users/debane/Documents/MS Data Science/630 Predictive Analytics/Term Project/Q93wordcloud.png", width=800, height=400)
+
+# Your existing code to create the word cloud
+text_corpus <- Corpus(VectorSource(text_data))
+text_tdm <- TermDocumentMatrix(text_corpus)
+text_m <- as.matrix(text_tdm)
+word_freqs <- sort(rowSums(text_m), decreasing=TRUE)
+word_cloud_data <- data.frame(word=names(word_freqs), freq=word_freqs)
+
+wordcloud(words = word_cloud_data$word, freq = word_cloud_data$freq, min.freq = 1, max.words=200, random.order=FALSE, rot.per=0.35, colors=brewer.pal(8, "Dark2"))
+
+# Close the PNG graphics device
+dev.off()
+
+
+```
+
+
+References:
+
+
+  A Short Introduction to the caret Package. (n.d.). Retrieved August 9, 2023, from https://cran.r-project.org/web/packages/caret/vignettes/caret.html
+  An Exploration of Naturalistic Psychedelic use. (2023). figshare. https://doi.org/10.6084/m9.figshare.21708044.v1
+  Bento, C. (2018, December 3). K-Means in Real Life: Clustering Workout Sessions. Medium. https://towardsdatascience.com/k-means-in-real-life-clustering-workout-sessions-119946f9e8dd
+  Bhalla, D. (n.d.). Random Forest in R. ListenData. Retrieved August 9, 2023, from https://www.listendata.com/2014/11/random-forest-with-r.html
+  Gandhi, R. (2018, July 5). Support Vector Machine — Introduction to Machine Learning Algorithms. Medium. https://towardsdatascience.com/support-vector-machine-introduction-to-machine-learning-algorithms-934a444fca47
+  KNN Algorithm | KNN In R | KNN Algorithm Example. (n.d.). Retrieved August 9, 2023, from https://www.analyticsvidhya.com/blog/2015/08/learning-concept-knn-algorithms-programming/
+  Top 5 Predictive Analytics Models and Algorithms - insightsoftware. (n.d.). Retrieved June 18, 2023, from https://insightsoftware.com/blog/top-5-predictive-analytics-models-and-algorithms/
+  Understanding K-means Clustering with Examples. (2014, July 25). Edureka. https://www.edureka.co/blog/k-means-clustering/
+
