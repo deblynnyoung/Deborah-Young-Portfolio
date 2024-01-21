@@ -1,5 +1,4 @@
 Description
-
 The Weather Forecast App is a Python-based application that provides users with real-time weather forecasts. By entering a US city name or ZIP code, users can retrieve current weather conditions, including temperature (in Fahrenheit, Celsius, or Kelvin), minimum and maximum temperatures, and general weather conditions.
 
 Key Features
